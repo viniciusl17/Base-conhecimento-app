@@ -11,7 +11,10 @@ import {
     onAuthStateChanged,
     createUserWithEmailAndPassword,
     sendPasswordResetEmail,
-    updateProfile
+    updateProfile,
+    EmailAuthProvider,
+    reauthenticateWithCredential,
+    updatePassword
 } from "firebase/auth";
 import { 
     getFirestore, 
@@ -27,7 +30,12 @@ import {
     orderBy,
     setDoc 
 } from "firebase/firestore";
-// A importação do Storage foi removida
+import {
+    getStorage,
+    ref,
+    uploadBytes,
+    getDownloadURL
+} from "firebase/storage";
 
 // Configuração do Firebase com as credenciais diretamente no código.
 const firebaseConfig = {
@@ -43,7 +51,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-// a inicialização do storage foi removida
+const storage = getStorage(app);
 
 
 // --- ÍCONES ---
@@ -59,7 +67,9 @@ const SpinnerIcon = ({className = "w-5 h-5"}) => <svg className={`animate-spin $
 const SunIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>;
 const MoonIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>;
 const EyeIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>;
-// ImageIcon e CopyIcon foram removidos
+const UsersIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
+const UserCogIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="15" r="3"/><circle cx="9" cy="7" r="4"/><path d="M10 15H6a4 4 0 0 0-4 4v2"/><path d="m21.7 16.4-.9-.3"/><path d="m15.2 13.9-.9-.3"/><path d="m16.6 18.7.3-.9"/><path d="m19.1 12.2.3-.9"/><path d="m19.5 17.8.9.3"/><path d="m14.8 16.1.9.3"/><path d="m17.4 11.3-.3.9"/><path d="m14.9 18.9-.3.9"/></svg>;
+const XIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>;
 
 // --- CONTEXTO DE TEMA (DARK/LIGHT MODE) ---
 const ThemeContext = createContext();
@@ -121,7 +131,7 @@ const AuthProvider = ({ children }) => {
     };
     const sendPasswordReset = (email) => sendPasswordResetEmail(auth, email);
 
-    const authContextValue = { user, login, logout, register, sendPasswordReset, isAuthenticated: !!user, loading };
+    const authContextValue = { user, setUser, login, logout, register, sendPasswordReset, isAuthenticated: !!user, loading };
 
     if (loading) {
         return <div className="min-h-screen bg-gray-100 flex items-center justify-center"><SpinnerIcon className="w-8 h-8 text-gray-700" /><span className="text-xl ml-3 text-gray-700">Carregando...</span></div>;
@@ -154,6 +164,23 @@ const ConfirmationModal = ({ isOpen, title, message, onConfirm, onCancel }) => {
                     <button onClick={onConfirm} className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition">Confirmar</button>
                 </div>
             </div>
+        </div>
+    );
+};
+
+const SuccessPopup = ({ message, show, onClose }) => {
+    useEffect(() => {
+        if (show) {
+            const timer = setTimeout(() => {
+                onClose();
+            }, 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [show, onClose]);
+
+    return (
+        <div className={`fixed top-5 right-5 bg-green-500 text-white py-2 px-4 rounded-lg shadow-lg transition-transform duration-300 ${show ? 'translate-x-0' : 'translate-x-full'}`}>
+            {message}
         </div>
     );
 };
@@ -278,6 +305,143 @@ const ViewHistoryTable = ({ history }) => (
     </div>
 );
 
+const UsersTable = ({ users, onRoleChange }) => (
+    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md mt-8">
+        <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">Gerenciamento de Usuários</h2>
+        <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Nome</th>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Email</th>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Permissão</th>
+                    </tr>
+                </thead>
+                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {users.length === 0 ? (
+                        <tr><td colSpan="3" className="text-center py-8 text-gray-500 dark:text-gray-400">Nenhum usuário encontrado.</td></tr>
+                    ) : (
+                        users.map((user) => (
+                            <tr key={user.uid} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">{user.name}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{user.email}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                                    <select
+                                        value={user.role}
+                                        onChange={(e) => onRoleChange(user.uid, e.target.value)}
+                                        className="px-2 py-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                    >
+                                        <option value="user">Usuário</option>
+                                        <option value="admin">Admin</option>
+                                    </select>
+                                </td>
+                            </tr>
+                        ))
+                    )}
+                </tbody>
+            </table>
+        </div>
+    </div>
+);
+
+const UserProfileModal = ({ isOpen, onClose }) => {
+    const { user, setUser } = useAuth();
+    const [name, setName] = useState(user.name);
+    const [oldPassword, setOldPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+
+    const handleNameUpdate = async (e) => {
+        e.preventDefault();
+        setLoading(true); setError(''); setSuccess('');
+        try {
+            await updateProfile(auth.currentUser, { displayName: name });
+            const userDocRef = doc(db, "users", user.uid);
+            await updateDoc(userDocRef, { name: name });
+            setUser(prev => ({...prev, name: name}));
+            setSuccess('Nome atualizado com sucesso!');
+        } catch (err) {
+            setError('Falha ao atualizar o nome.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handlePasswordUpdate = async (e) => {
+        e.preventDefault();
+        setLoading(true); setError(''); setSuccess('');
+
+        if (newPassword !== confirmPassword) {
+            setError('As novas senhas não coincidem.');
+            setLoading(false);
+            return;
+        }
+        if (newPassword.length < 6) {
+            setError('A nova senha deve ter no mínimo 6 caracteres.');
+            setLoading(false);
+            return;
+        }
+
+        try {
+            const credential = EmailAuthProvider.credential(user.email, oldPassword);
+            await reauthenticateWithCredential(auth.currentUser, credential);
+            await updatePassword(auth.currentUser, newPassword);
+            setSuccess('Senha alterada com sucesso!');
+            setOldPassword('');
+            setNewPassword('');
+            setConfirmPassword('');
+        } catch (err) {
+            setError('Senha antiga incorreta ou falha na reautenticação.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md relative">
+                <button onClick={onClose} className="absolute top-4 right-4 p-1 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"><XIcon /></button>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">Meu Perfil</h2>
+                
+                {error && <p className="bg-red-100 text-red-700 text-sm p-3 rounded mb-4">{error}</p>}
+                {success && <p className="bg-green-100 text-green-700 text-sm p-3 rounded mb-4">{success}</p>}
+
+                <form onSubmit={handleNameUpdate} className="mb-8">
+                    <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">Alterar Nome</h3>
+                    <div className="mb-4">
+                        <label className="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2" htmlFor="name">Nome</label>
+                        <input id="name" type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200 rounded-md shadow-sm" required />
+                    </div>
+                    <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded flex justify-center" disabled={loading}>{loading ? <SpinnerIcon /> : 'Salvar Nome'}</button>
+                </form>
+
+                <form onSubmit={handlePasswordUpdate}>
+                    <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">Alterar Senha</h3>
+                    <div className="mb-4">
+                        <label className="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2" htmlFor="oldPassword">Senha Antiga</label>
+                        <input id="oldPassword" type="password" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200 rounded-md shadow-sm" required />
+                    </div>
+                    <div className="mb-4">
+                        <label className="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2" htmlFor="newPassword">Nova Senha</label>
+                        <input id="newPassword" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200 rounded-md shadow-sm" required />
+                    </div>
+                    <div className="mb-6">
+                        <label className="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2" htmlFor="confirmPassword">Confirmar Nova Senha</label>
+                        <input id="confirmPassword" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200 rounded-md shadow-sm" required />
+                    </div>
+                    <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded flex justify-center" disabled={loading}>{loading ? <SpinnerIcon /> : 'Alterar Senha'}</button>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+
 // --- PÁGINAS ---
 const LoginPage = () => {
     const [mode, setMode] = useState('login'); // 'login', 'register', 'reset'
@@ -395,25 +559,48 @@ const LoginPage = () => {
     );
 };
 
-const AdminDashboard = () => {
+const AdminDashboard = ({ onSwitchView }) => {
     const auth = useAuth();
     const [questions, setQuestions] = useState([]);
     const [history, setHistory] = useState([]);
+    const [users, setUsers] = useState([]);
     const [currentQuestion, setCurrentQuestion] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [showSuccessPopup, setShowSuccessPopup] = useState(false);
     const questionToDeleteId = useRef(null);
+    const [error, setError] = useState('');
 
     useEffect(() => {
+        const handleErrors = (err, context) => {
+            console.error(`Erro em ${context}: `, err);
+            if (err.code === 'permission-denied') {
+                setError('Erro de permissão. Verifique as regras de segurança do Firestore.');
+            }
+        };
+
         const q = query(collection(db, "questions"), orderBy("createdAt", "desc"));
-        const unsubscribeQuestions = onSnapshot(q, (snapshot) => setQuestions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
+        const unsubscribeQuestions = onSnapshot(q, 
+            (snapshot) => setQuestions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))),
+            (err) => handleErrors(err, 'questions')
+        );
 
         const h = query(collection(db, "viewHistory"), orderBy("viewedAt", "desc"));
-        const unsubscribeHistory = onSnapshot(h, (snapshot) => setHistory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
+        const unsubscribeHistory = onSnapshot(h, 
+            (snapshot) => setHistory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))),
+            (err) => handleErrors(err, 'viewHistory')
+        );
+
+        const u = query(collection(db, "users"));
+        const unsubscribeUsers = onSnapshot(u, 
+            (snapshot) => setUsers(snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }))),
+            (err) => handleErrors(err, 'users')
+        );
 
         return () => {
             unsubscribeQuestions();
             unsubscribeHistory();
+            unsubscribeUsers();
         };
     }, []);
 
@@ -425,12 +612,23 @@ const AdminDashboard = () => {
                 await updateDoc(doc(db, "questions", id), { ...dataToUpdate, updatedAt: serverTimestamp() });
             } else {
                 await addDoc(collection(db, "questions"), { ...questionData, createdAt: serverTimestamp() });
+                setShowSuccessPopup(true);
             }
             handleClear();
         } catch (error) {
             console.error("Erro ao salvar:", error);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleRoleChange = async (uid, newRole) => {
+        const userRef = doc(db, "users", uid);
+        try {
+            await updateDoc(userRef, { role: newRole });
+        } catch (error) {
+            console.error("Erro ao alterar permissão:", error);
+            alert("Não foi possível alterar a permissão. Verifique as regras de segurança.");
         }
     };
 
@@ -456,15 +654,20 @@ const AdminDashboard = () => {
 
     const totalQuestions = questions.length;
     const lastUpdate = totalQuestions > 0 && questions[0].createdAt ? questions[0].createdAt.toDate().toLocaleString('pt-BR') : 'N/A';
+    const totalUsers = users.length;
 
     return (
         <>
+            <SuccessPopup message="Cadastrado com sucesso!" show={showSuccessPopup} onClose={() => setShowSuccessPopup(false)} />
             <ConfirmationModal isOpen={isModalOpen} title="Confirmar Exclusão" message="Tem certeza que deseja excluir esta pergunta?" onConfirm={confirmDelete} onCancel={() => setIsModalOpen(false)} />
             <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
                 <header className="bg-white dark:bg-gray-800 shadow-sm sticky top-0 z-10">
                     <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
                         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Painel Administrativo</h1>
                         <div className="flex items-center space-x-4">
+                            <button onClick={onSwitchView} className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 transition">
+                                <EyeIcon className="w-4 h-4 mr-2" /> Ver como Usuário
+                            </button>
                             <ThemeToggle />
                             <span className="text-gray-600 dark:text-gray-300 hidden sm:inline">Olá, {auth.user.name}</span>
                             <button onClick={auth.logout} className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 transition">
@@ -474,13 +677,16 @@ const AdminDashboard = () => {
                     </div>
                 </header>
                 <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    {error && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert"><p>{error}</p></div>}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                         <StatCard title="Total de Perguntas" value={totalQuestions} icon={<HomeIcon />} />
                         <StatCard title="Último Cadastro" value={lastUpdate} icon={<ClockIcon />} />
                         <StatCard title="Total de Visualizações" value={history.length} icon={<EyeIcon />} />
+                        <StatCard title="Usuários Cadastrados" value={totalUsers} icon={<UsersIcon />} />
                     </div>
                     <QuestionForm currentQuestion={currentQuestion} onSave={handleSave} onClear={handleClear} isLoading={isLoading} />
                     <QuestionsTable questions={questions} onEdit={handleEdit} onDelete={handleDeleteClick} />
+                    <UsersTable users={users} onRoleChange={handleRoleChange} />
                     <ViewHistoryTable history={history} />
                 </main>
             </div>
@@ -488,13 +694,14 @@ const AdminDashboard = () => {
     );
 };
 
-const UserHome = () => {
+const UserHome = ({ isAdminView, onSwitchView }) => {
     const auth = useAuth();
     const [questions, setQuestions] = useState([]);
     const [themes, setThemes] = useState([]);
     const [selectedTheme, setSelectedTheme] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [loading, setLoading] = useState(true);
+    const [isProfileModalOpen, setProfileModalOpen] = useState(false);
 
     useEffect(() => {
         const q = query(collection(db, "questions"), orderBy("createdAt", "desc"));
@@ -560,10 +767,20 @@ const UserHome = () => {
     const displayedQuestions = selectedTheme ? questions.filter(q => q.theme === selectedTheme) : [];
 
     return (
+        <>
+        <UserProfileModal isOpen={isProfileModalOpen} onClose={() => setProfileModalOpen(false)} />
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white p-4 sm:p-8 transition-colors duration-200">
             <header className="flex justify-between items-center mb-8 max-w-4xl mx-auto">
                 <h1 className="text-xl font-bold text-gray-800 dark:text-gray-200">Base de Conhecimento</h1>
                 <div className="flex items-center space-x-4">
+                    {isAdminView && (
+                         <button onClick={onSwitchView} className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 transition">
+                            Voltar ao Painel
+                        </button>
+                    )}
+                    <button onClick={() => setProfileModalOpen(true)} className="p-2 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition">
+                        <UserCogIcon />
+                    </button>
                     <ThemeToggle />
                     <span className="text-gray-600 dark:text-gray-400 hidden sm:inline">Olá, {auth.user.name}</span>
                     <button onClick={auth.logout} className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 transition">
@@ -602,13 +819,24 @@ const UserHome = () => {
                 )}
             </main>
         </div>
+        </>
     );
 };
 
 // --- COMPONENTE PRINCIPAL E ROTEAMENTO ---
 const App = () => {
     const { isAuthenticated, user } = useAuth();
-    return isAuthenticated ? (user.role === 'admin' ? <AdminDashboard /> : <UserHome />) : <LoginPage />;
+    const [viewAsUser, setViewAsUser] = useState(false);
+
+    if (!isAuthenticated) {
+        return <LoginPage />;
+    }
+
+    if (user.role === 'admin' && !viewAsUser) {
+        return <AdminDashboard onSwitchView={() => setViewAsUser(true)} />;
+    }
+
+    return <UserHome isAdminView={user.role === 'admin'} onSwitchView={() => setViewAsUser(false)} />;
 };
 
 export default function KnowledgeBaseApp() {
