@@ -64,7 +64,7 @@ Siga os passos abaixo para executar a aplicação na sua máquina.
 
 1.  **Clone o repositório:**
     ```bash
-    git clone [https://github.com/SEU-USUARIO/SEU-REPOSITORIO.git](https://github.com/SEU-USUARIO/SEU-REPOSITORIO.git)
+    git clone [https://github.com/viniciusl17/Base-conhecimento-app.git](https://github.com/viniciusl17/Base-conhecimento-app.git)
     cd SEU-REPOSITORIO
     ```
 
