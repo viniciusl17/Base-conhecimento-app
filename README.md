@@ -1,7 +1,5 @@
 # 📖 Base de Conhecimento Inteligente
 
-![Imagem de demonstração da tela de usuário da aplicação](https://i.imgur.com/3n1P82a.png)
-
 <p align="center">
   <img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React Badge"/>
   <img src="https://img.shields.io/badge/Firebase-FFCA28?style=for-the-badge&logo=firebase&logoColor=black" alt="Firebase Badge"/>
